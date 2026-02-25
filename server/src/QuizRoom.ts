@@ -190,4 +190,17 @@ export class QuizRoom {
     this.phase = "ended";
     this.broadcastToAll({ type: "ended" });
   }
+
+  // Bonus
+
+  // Pour reconnecter un joueur qui a perdu sa connexion
+  reconnectPlayer(playerId: string, newWs: WebSocket): boolean {
+    const player = this.players.get(playerId);
+
+    if (!player) return false;
+
+    player.ws = newWs;
+
+    return true;
+  }
 }

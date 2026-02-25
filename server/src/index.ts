@@ -7,7 +7,8 @@ import { WebSocketServer, WebSocket } from "ws";
 import type { ClientMessage } from "../../packages/shared-types";
 import { QuizRoom } from "./QuizRoom";
 import { send, generateQuizCode } from "./utils";
-
+import jwt from "jsonwebtoken";
+const JWT_SECRET = "super-secret-kahoot-key-2024";
 const PORT = 3001;
 
 // ---- Stockage global des salles ----
@@ -73,6 +74,13 @@ wss.on("connection", (ws: WebSocket) => {
 
         const playerId = room.addPlayer(message.name, ws);
         clientRoomMap.set(ws, { room, playerId });
+
+        // Bonus envoyer un token de session pour reconnexion
+        const token = jwt.sign({ playerId, quizCode: roomCode }, JWT_SECRET, {
+          expiresIn: "2h",
+        });
+        send(ws, { type: "session", token, playerId });
+
         break;
       }
 
@@ -172,7 +180,56 @@ wss.on("connection", (ws: WebSocket) => {
         }
         break;
       }
+      // ============================================================
+      // Un joueur tente de se reconnecter suite à une coupure
+      // ============================================================
+      case "reconnect": {
+        try {
+          // Décodage du token pour récupérer le playerId et le quizCode
+          const decoded = jwt.verify(message.token, JWT_SECRET) as {
+            playerId: string;
+            quizCode: string;
+          };
 
+          const room = rooms.get(decoded.quizCode);
+          if (!room) {
+            send(ws, { type: "error", message: "La salle n'existe plus." });
+            break;
+          }
+
+          // Tenter la reconnexion dans la room
+          const success = room.reconnectPlayer(decoded.playerId, ws);
+
+          if (success) {
+            // Mise à jour de la map pour ce joueur
+            clientRoomMap.set(ws, { room, playerId: decoded.playerId });
+
+            // Renvoyer l'état actuel pour que l'écran du joueur se mette à jour
+            const currentScore = room.scores.get(decoded.playerId) || 0;
+            send(ws, {
+              type: "sync",
+              phase: room.phase,
+              data: { score: currentScore, reconnected: true },
+            });
+
+            console.log(
+              `[Server] Joueur ${decoded.playerId} reconnecté avec succès !`,
+            );
+          } else {
+            send(ws, {
+              type: "error",
+              message: "Joueur introuvable dans cette salle.",
+            });
+          }
+        } catch (err) {
+          // Sécurité si le token est invalide ou corrompu
+          send(ws, {
+            type: "error",
+            message: "Token invalide ou corrompu. Reconnexion refusée.",
+          });
+        }
+        break;
+      }
       default: {
         send(ws, { type: "error", message: `Type de message inconnu` });
       }
