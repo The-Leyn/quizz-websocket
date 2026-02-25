@@ -1,143 +1,215 @@
-// ============================================================
-// Player App - Composant principal
-// A IMPLEMENTER : gestion des messages et routage par phase
-// ============================================================
-
-import { useState, useEffect } from 'react'
-import { useWebSocket } from './hooks/useWebSocket'
+﻿import { useEffect, useState } from 'react'
 import type { QuizPhase, QuizQuestion } from '@shared/index'
-import JoinScreen from './components/JoinScreen'
-import WaitingLobby from './components/WaitingLobby'
-import AnswerScreen from './components/AnswerScreen'
-import FeedbackScreen from './components/FeedbackScreen'
-import ScoreScreen from './components/ScoreScreen'
+import { useWebSocket } from './shared/hooks/useWebSocket'
+import { Button, ConnectionBadge } from './shared/ui'
+import {
+  EndedPage,
+  FeedbackPage,
+  JoinPage,
+  LeaderboardPage,
+  LobbyPage,
+  QuestionPage,
+} from './pages'
 
 const WS_URL = 'ws://localhost:3001'
+const IS_DEV = import.meta.env.DEV
+
+type AppPhase = QuizPhase | 'join' | 'feedback'
+
+const PREVIEW_PHASES: Array<{ value: AppPhase; label: string }> = [
+  { value: 'join', label: 'Join' },
+  { value: 'lobby', label: 'Lobby' },
+  { value: 'question', label: 'Question' },
+  { value: 'feedback', label: 'Feedback' },
+  { value: 'leaderboard', label: 'Classement' },
+  { value: 'ended', label: 'Fin' },
+]
+
+const PREVIEW_PLAYERS = ['Amina', 'Lucas', 'Nora', 'Yanis', 'Manon']
+const PREVIEW_QUESTION: Omit<QuizQuestion, 'correctIndex'> = {
+  id: 'preview-q1',
+  text: 'Quel protocole est full-duplex en temps reel ?',
+  choices: ['REST', 'WebSocket', 'GraphQL', 'SOAP'],
+  timerSec: 20,
+}
+const PREVIEW_RANKINGS = [
+  { name: 'Amina', score: 3600 },
+  { name: 'Lucas', score: 3200 },
+  { name: 'Nora', score: 2900 },
+  { name: 'Yanis', score: 2500 },
+  { name: 'Manon', score: 2200 },
+]
 
 function App() {
   const { status, sendMessage, lastMessage } = useWebSocket(WS_URL)
 
-  // --- Etats de l'application ---
-  const [phase, setPhase] = useState<QuizPhase | 'join' | 'feedback'>('join')
+  const [phase, setPhase] = useState<AppPhase>('join')
   const [playerName, setPlayerName] = useState('')
+  const [currentQuizCode, setCurrentQuizCode] = useState('')
   const [players, setPlayers] = useState<string[]>([])
   const [currentQuestion, setCurrentQuestion] = useState<Omit<QuizQuestion, 'correctIndex'> | null>(null)
   const [remaining, setRemaining] = useState(0)
   const [hasAnswered, setHasAnswered] = useState(false)
+  const [lastSelectedChoice, setLastSelectedChoice] = useState<number | null>(null)
   const [lastCorrect, setLastCorrect] = useState(false)
   const [score, setScore] = useState(0)
   const [rankings, setRankings] = useState<{ name: string; score: number }[]>([])
   const [error, setError] = useState<string | undefined>(undefined)
 
-  // --- Traitement des messages du serveur ---
+  const [previewMode, setPreviewMode] = useState<boolean>(IS_DEV)
+  const [previewPhase, setPreviewPhase] = useState<AppPhase>('join')
+  const [previewCorrect, setPreviewCorrect] = useState<boolean>(true)
+
   useEffect(() => {
     if (!lastMessage) return
 
-    // TODO: Traiter chaque type de message du serveur
-    // Utiliser un switch sur lastMessage.type
-
     switch (lastMessage.type) {
+      case 'sync': {
+        setPhase(lastMessage.phase)
+        break
+      }
+
       case 'joined': {
-        // TODO: Mettre a jour la liste des joueurs
-        // TODO: Passer en phase 'lobby'
-        // TODO: Effacer les erreurs
+        setPlayers(lastMessage.players)
+        setPhase('lobby')
+        setError(undefined)
         break
       }
 
       case 'question': {
-        // TODO: Mettre a jour currentQuestion avec lastMessage.question
-        // TODO: Mettre a jour remaining avec lastMessage.question.timerSec
-        // TODO: Reinitialiser hasAnswered a false
-        // TODO: Changer la phase en 'question'
+        setCurrentQuestion(lastMessage.question)
+        setRemaining(lastMessage.question.timerSec)
+        setHasAnswered(false)
+        setLastSelectedChoice(null)
+        setPhase('question')
         break
       }
 
       case 'tick': {
-        // TODO: Mettre a jour remaining avec lastMessage.remaining
+        setRemaining(lastMessage.remaining)
         break
       }
 
       case 'results': {
-        // TODO: Verifier si le joueur a repondu correctement
-        //   (comparer la reponse du joueur avec lastMessage.correctIndex)
-        // TODO: Mettre a jour lastCorrect (true/false)
-        // TODO: Recuperer le score du joueur depuis lastMessage.scores
-        // TODO: Changer la phase en 'feedback'
+        const isCorrect =
+          lastSelectedChoice !== null && lastSelectedChoice === lastMessage.correctIndex
+
+        setLastCorrect(isCorrect)
+        setScore(lastMessage.scores[playerName] ?? 0)
+        setPhase('feedback')
         break
       }
 
       case 'leaderboard': {
-        // TODO: Mettre a jour rankings avec lastMessage.rankings
-        // TODO: Changer la phase en 'leaderboard'
+        setRankings(lastMessage.rankings)
+        setPhase('leaderboard')
         break
       }
 
       case 'ended': {
-        // TODO: Changer la phase en 'ended'
+        setPhase('ended')
         break
       }
 
       case 'error': {
-        // TODO: Stocker le message d'erreur dans le state error
+        setError(lastMessage.message)
         break
       }
     }
-  }, [lastMessage])
+  }, [lastMessage, lastSelectedChoice, playerName])
 
-  // --- Handlers ---
-
-  /** Appele quand le joueur soumet le formulaire de connexion */
   const handleJoin = (code: string, name: string) => {
-    // TODO: Sauvegarder le nom du joueur dans playerName
-    // TODO: Envoyer un message 'join' au serveur avec sendMessage
+    const safeCode = code.trim().toUpperCase()
+    const safeName = name.trim()
+
+    if (!safeCode || !safeName) return
+
+    setPlayerName(safeName)
+    setCurrentQuizCode(safeCode)
+    setError(undefined)
+
+    if (previewMode) {
+      setPreviewPhase('lobby')
+      return
+    }
+
+    sendMessage({ type: 'join', quizCode: safeCode, name: safeName })
   }
 
-  /** Appele quand le joueur clique sur un choix de reponse */
   const handleAnswer = (choiceIndex: number) => {
-    // TODO: Verifier que le joueur n'a pas deja repondu (hasAnswered)
-    // TODO: Marquer hasAnswered a true
-    // TODO: Envoyer un message 'answer' au serveur avec l'id de la question et le choiceIndex
+    if (hasAnswered || !currentQuestion) return
+
+    setHasAnswered(true)
+    setLastSelectedChoice(choiceIndex)
+
+    if (previewMode) {
+      setPreviewCorrect(choiceIndex === 1)
+      setScore((prevScore) => (prevScore > 0 ? prevScore : 2450))
+      setPreviewPhase('feedback')
+      return
+    }
+
+    sendMessage({
+      type: 'answer',
+      questionId: currentQuestion.id,
+      choiceIndex,
+    })
   }
 
-  // --- Rendu par phase ---
+  const handleRestart = () => {
+    setPhase('join')
+    setPlayers([])
+    setCurrentQuestion(null)
+    setRemaining(0)
+    setHasAnswered(false)
+    setLastSelectedChoice(null)
+    setLastCorrect(false)
+    setScore(0)
+    setRankings([])
+    setError(undefined)
+    setCurrentQuizCode('')
+
+    if (previewMode) {
+      setPreviewPhase('join')
+    }
+  }
+
+  const displayPhase = previewMode ? previewPhase : phase
+  const displayPlayerName = previewMode ? playerName || 'Toi' : playerName
+  const displayPlayers = previewMode ? (players.length > 0 ? players : PREVIEW_PLAYERS) : players
+  const displayQuestion = previewMode ? currentQuestion ?? PREVIEW_QUESTION : currentQuestion
+  const displayRemaining = previewMode ? (remaining > 0 ? remaining : PREVIEW_QUESTION.timerSec) : remaining
+  const displayRankings = previewMode ? (rankings.length > 0 ? rankings : PREVIEW_RANKINGS) : rankings
+  const displayScore = previewMode ? (score > 0 ? score : 2450) : score
+  const displayCorrect = previewMode ? previewCorrect : lastCorrect
+
   const renderPhase = () => {
-    switch (phase) {
+    switch (displayPhase) {
       case 'join':
-        return <JoinScreen onJoin={handleJoin} error={error} />
+        return <JoinPage onJoin={handleJoin} error={error} />
 
       case 'lobby':
-        return <WaitingLobby players={players} />
+        return <LobbyPage players={displayPlayers} />
 
       case 'question':
-        return currentQuestion ? (
-          <AnswerScreen
-            question={currentQuestion}
-            remaining={remaining}
+        return displayQuestion ? (
+          <QuestionPage
+            question={displayQuestion}
+            remaining={displayRemaining}
             onAnswer={handleAnswer}
             hasAnswered={hasAnswered}
           />
         ) : null
 
       case 'feedback':
-        return <FeedbackScreen correct={lastCorrect} score={score} />
-
       case 'results':
-        // Pendant 'results' on reste sur FeedbackScreen
-        return <FeedbackScreen correct={lastCorrect} score={score} />
+        return <FeedbackPage correct={displayCorrect} score={displayScore} />
 
       case 'leaderboard':
-        return <ScoreScreen rankings={rankings} playerName={playerName} />
+        return <LeaderboardPage rankings={displayRankings} playerName={displayPlayerName} />
 
       case 'ended':
-        return (
-          <div className="phase-container">
-            <h1>Quiz termine !</h1>
-            <p className="ended-message">Merci d'avoir participe !</p>
-            <button className="btn-primary" onClick={() => setPhase('join')}>
-              Rejoindre un autre quiz
-            </button>
-          </div>
-        )
+        return <EndedPage onRestart={handleRestart} />
 
       default:
         return null
@@ -145,16 +217,64 @@ function App() {
   }
 
   return (
-    <div className="app">
-      <header className="app-header">
-        <h2>Quiz Player</h2>
-        <span className={`status-badge status-${status}`}>
-          {status === 'connected' ? 'Connecte' : status === 'connecting' ? 'Connexion...' : 'Deconnecte'}
-        </span>
+    <div className="flex min-h-screen flex-col bg-bg-app text-text">
+      <header className="flex items-center justify-between border-b border-border bg-surface px-4 py-3 sm:px-6">
+        <div className="space-y-0.5">
+          <h2 className="text-base font-semibold text-accent sm:text-lg">Quiz Player</h2>
+          {currentQuizCode ? (
+            <p className="text-xs text-text-muted">Code: {currentQuizCode}</p>
+          ) : null}
+        </div>
+        <ConnectionBadge status={status} />
       </header>
-      <main className="app-main">
-        {renderPhase()}
+
+      <main className="flex flex-1 items-center justify-center px-3 py-5 sm:px-4 sm:py-6">
+        <div className="w-full pb-24 sm:pb-8">{renderPhase()}</div>
       </main>
+
+      {IS_DEV ? (
+        <aside className="fixed inset-x-2 bottom-2 z-30 rounded-2xl border border-border bg-surface/95 p-2 shadow-2xl backdrop-blur sm:inset-x-auto sm:right-4 sm:w-auto">
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              size="md"
+              variant={previewMode ? 'primary' : 'secondary'}
+              onClick={() => setPreviewMode((prev) => !prev)}
+              aria-pressed={previewMode}
+            >
+              Preview {previewMode ? 'ON' : 'OFF'}
+            </Button>
+
+            {previewMode
+              ? PREVIEW_PHASES.map((item) => (
+                  <Button
+                    key={item.value}
+                    size="md"
+                    variant={previewPhase === item.value ? 'primary' : 'ghost'}
+                    onClick={() => {
+                      if (item.value === 'question') {
+                        setHasAnswered(false)
+                        setLastSelectedChoice(null)
+                      }
+                      setPreviewPhase(item.value)
+                    }}
+                  >
+                    {item.label}
+                  </Button>
+                ))
+              : null}
+
+            {previewMode && (previewPhase === 'feedback' || previewPhase === 'results') ? (
+              <Button
+                size="md"
+                variant="secondary"
+                onClick={() => setPreviewCorrect((prev) => !prev)}
+              >
+                {previewCorrect ? 'Mode Correct' : 'Mode Incorrect'}
+              </Button>
+            ) : null}
+          </div>
+        </aside>
+      ) : null}
     </div>
   )
 }
