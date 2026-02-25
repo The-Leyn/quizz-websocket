@@ -10,7 +10,7 @@ Un quiz interactif en temps reel inspire de Kahoot, construit avec WebSocket, Re
 ## Structure du projet
 
 ```
-quiz-app/
+quiz-websocket/
 ├── packages/
 │   └── shared-types/       # Types TypeScript partages (COMPLET)
 ├── server/                  # Serveur WebSocket Node.js
