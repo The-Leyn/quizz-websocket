@@ -1,126 +1,146 @@
 // ============================================================
 // Host App - Composant principal
-// A IMPLEMENTER : gestion des messages et routage par phase
 // ============================================================
 
-import { useState, useEffect } from 'react'
-import { useWebSocket } from './hooks/useWebSocket'
-import type { QuizPhase, QuizQuestion, ServerMessage } from '@shared/index'
-import CreateQuiz from './components/CreateQuiz'
-import Lobby from './components/Lobby'
-import QuestionView from './components/QuestionView'
-import Results from './components/Results'
-import Leaderboard from './components/Leaderboard'
+import { useState, useEffect } from "react";
+import { useWebSocket } from "./hooks/useWebSocket";
+import type { QuizPhase, QuizQuestion } from "@shared/index";
+import CreateQuiz from "./components/CreateQuiz";
+import Lobby from "./components/Lobby";
+import QuestionView from "./components/QuestionView";
+import Results from "./components/Results";
+import Leaderboard from "./components/Leaderboard";
 
-const WS_URL = 'ws://localhost:3001'
+const WS_URL = "ws://localhost:3001";
 
 function App() {
-  const { status, sendMessage, lastMessage } = useWebSocket(WS_URL)
+  const { status, sendMessage, lastMessage } = useWebSocket(WS_URL);
 
   // --- Etats de l'application ---
-  const [phase, setPhase] = useState<QuizPhase | 'create'>('create')
-  const [quizCode, setQuizCode] = useState('')
-  const [players, setPlayers] = useState<string[]>([])
-  const [currentQuestion, setCurrentQuestion] = useState<Omit<QuizQuestion, 'correctIndex'> | null>(null)
-  const [questionIndex, setQuestionIndex] = useState(0)
-  const [questionTotal, setQuestionTotal] = useState(0)
-  const [remaining, setRemaining] = useState(0)
-  const [answerCount, setAnswerCount] = useState(0)
-  const [correctIndex, setCorrectIndex] = useState(-1)
-  const [distribution, setDistribution] = useState<number[]>([])
-  const [rankings, setRankings] = useState<{ name: string; score: number }[]>([])
+  const [phase, setPhase] = useState<QuizPhase | "create">("create");
+  const [quizCode, setQuizCode] = useState("");
+  const [players, setPlayers] = useState<string[]>([]);
+  const [currentQuestion, setCurrentQuestion] = useState<Omit<
+    QuizQuestion,
+    "correctIndex"
+  > | null>(null);
+  const [questionIndex, setQuestionIndex] = useState(0);
+  const [questionTotal, setQuestionTotal] = useState(0);
+  const [remaining, setRemaining] = useState(0);
+  const [answerCount, setAnswerCount] = useState(0);
+  const [correctIndex, setCorrectIndex] = useState(-1);
+  const [distribution, setDistribution] = useState<number[]>([]);
+  const [rankings, setRankings] = useState<{ name: string; score: number }[]>(
+    [],
+  );
 
   // --- Traitement des messages du serveur ---
   useEffect(() => {
-    if (!lastMessage) return
-
-    // TODO: Traiter chaque type de message du serveur
-    // Utiliser un switch sur lastMessage.type
+    if (!lastMessage) return;
 
     switch (lastMessage.type) {
-      case 'sync': {
-        // TODO: Quand le serveur envoie un sync (apres host:create),
-        // extraire le quizCode de lastMessage.data et mettre a jour l'etat
-        // Changer la phase vers lastMessage.phase
-        break
+      case "sync": {
+        // Le serveur nous confirme la création et donne le code
+        if (lastMessage.phase === "lobby") {
+          const data = lastMessage.data as { quizCode: string };
+          setQuizCode(data.quizCode);
+          setPhase("lobby");
+        }
+        break;
       }
 
-      case 'joined': {
-        // TODO: Mettre a jour la liste des joueurs avec lastMessage.players
-        break
+      case "joined": {
+        // Un nouveau joueur est arrivé
+        setPlayers(lastMessage.players);
+        break;
       }
 
-      case 'question': {
-        // TODO: Mettre a jour currentQuestion, questionIndex, questionTotal
-        // TODO: Initialiser remaining avec la duree du timer de la question
-        // TODO: Reinitialiser answerCount a 0
-        // TODO: Changer la phase en 'question'
-        break
+      case "question": {
+        // Une nouvelle question commence
+        setCurrentQuestion(lastMessage.question);
+        setQuestionIndex(lastMessage.index);
+        setQuestionTotal(lastMessage.total);
+        setRemaining(lastMessage.question.timerSec);
+        setAnswerCount(0); // On remet le compteur de réponses à zéro
+        setPhase("question");
+        break;
       }
 
-      case 'tick': {
-        // TODO: Mettre a jour remaining avec lastMessage.remaining
-        break
+      case "tick": {
+        // Le chrono défile
+        setRemaining(lastMessage.remaining);
+        break;
       }
 
-      case 'results': {
-        // TODO: Mettre a jour correctIndex, distribution
-        // TODO: Calculer answerCount (somme de distribution)
-        // TODO: Changer la phase en 'results'
-        break
+      case "results": {
+        // Le temps est écoulé, on affiche les barres de résultats
+        setCorrectIndex(lastMessage.correctIndex);
+        setDistribution(lastMessage.distribution);
+
+        // La somme du tableau de distribution donne le nombre total de votants
+        const totalVotes = lastMessage.distribution.reduce(
+          (acc, curr) => acc + curr,
+          0,
+        );
+        setAnswerCount(totalVotes);
+
+        setPhase("results");
+        break;
       }
 
-      case 'leaderboard': {
-        // TODO: Mettre a jour rankings avec lastMessage.rankings
-        // TODO: Changer la phase en 'leaderboard'
-        break
+      case "leaderboard": {
+        // Affichage du podium
+        setRankings(lastMessage.rankings);
+        setPhase("leaderboard");
+        break;
       }
 
-      case 'ended': {
-        // TODO: Changer la phase en 'ended'
-        break
+      case "ended": {
+        // Fin de partie
+        setPhase("ended");
+        // Optionnel : on pourrait réinitialiser les states ici si on veut rejouer propre
+        break;
       }
 
-      case 'error': {
-        // TODO: Afficher l'erreur (console.error ou alert)
-        break
+      case "error": {
+        // Une erreur est survenue (ex: connexion perdue, mauvaise manip)
+        console.error("Erreur serveur:", lastMessage.message);
+        alert(`Erreur: ${lastMessage.message}`);
+        break;
+      }
+      case "playerAnswered": {
+        setAnswerCount(lastMessage.count);
+        break;
       }
     }
-  }, [lastMessage])
+  }, [lastMessage]);
 
-  // --- Handlers ---
+  // --- Handlers (Actions déclenchées par l'utilisateur) ---
 
-  /** Appele quand le host soumet le formulaire de creation */
   const handleCreateQuiz = (title: string, questions: QuizQuestion[]) => {
-    // TODO: Envoyer un message 'host:create' au serveur avec sendMessage
-  }
+    sendMessage({ type: "host:create", title, questions });
+  };
 
-  /** Appele quand le host clique sur "Demarrer" dans le lobby */
   const handleStart = () => {
-    // TODO: Envoyer un message 'host:start' au serveur
-  }
+    sendMessage({ type: "host:start" });
+  };
 
-  /** Appele quand le host clique sur "Question suivante" */
   const handleNext = () => {
-    // TODO: Envoyer un message 'host:next' au serveur
-  }
+    sendMessage({ type: "host:next" });
+  };
 
   // --- Rendu par phase ---
   const renderPhase = () => {
     switch (phase) {
-      case 'create':
-        return <CreateQuiz onSubmit={handleCreateQuiz} />
+      case "create":
+        return <CreateQuiz onSubmit={handleCreateQuiz} />;
 
-      case 'lobby':
+      case "lobby":
         return (
-          <Lobby
-            quizCode={quizCode}
-            players={players}
-            onStart={handleStart}
-          />
-        )
+          <Lobby quizCode={quizCode} players={players} onStart={handleStart} />
+        );
 
-      case 'question':
+      case "question":
         return currentQuestion ? (
           <QuestionView
             question={currentQuestion}
@@ -130,9 +150,9 @@ function App() {
             answerCount={answerCount}
             totalPlayers={players.length}
           />
-        ) : null
+        ) : null;
 
-      case 'results':
+      case "results":
         return currentQuestion ? (
           <Results
             correctIndex={correctIndex}
@@ -140,39 +160,47 @@ function App() {
             choices={currentQuestion.choices}
             onNext={handleNext}
           />
-        ) : null
+        ) : null;
 
-      case 'leaderboard':
-        return <Leaderboard rankings={rankings} />
+      case "leaderboard":
+        return <Leaderboard rankings={rankings} />;
 
-      case 'ended':
+      case "ended":
         return (
           <div className="phase-container">
-            <h1>Quiz termine !</h1>
-            <button className="btn-primary" onClick={() => setPhase('create')}>
-              Creer un nouveau quiz
+            <h1>Quiz terminé !</h1>
+            <button
+              className="btn-primary"
+              onClick={() => {
+                setPhase("create");
+                setPlayers([]);
+              }}
+            >
+              Créer un nouveau quiz
             </button>
           </div>
-        )
+        );
 
       default:
-        return null
+        return null;
     }
-  }
+  };
 
   return (
     <div className="app">
       <header className="app-header">
         <h2>Quiz Host</h2>
         <span className={`status-badge status-${status}`}>
-          {status === 'connected' ? 'Connecte' : status === 'connecting' ? 'Connexion...' : 'Deconnecte'}
+          {status === "connected"
+            ? "Connecté"
+            : status === "connecting"
+              ? "Connexion..."
+              : "Déconnecté"}
         </span>
       </header>
-      <main className="app-main">
-        {renderPhase()}
-      </main>
+      <main className="app-main">{renderPhase()}</main>
     </div>
-  )
+  );
 }
 
-export default App
+export default App;

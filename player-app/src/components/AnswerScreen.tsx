@@ -1,54 +1,78 @@
 // ============================================================
-// AnswerScreen - Boutons de reponse colores
-// A IMPLEMENTER : question, timer, 4 boutons colores
+// AnswerScreen - Boutons de réponse colorés
 // ============================================================
 
-import { useState } from 'react'
-import type { QuizQuestion } from '@shared/index'
+import { useState } from "react";
+import type { QuizQuestion } from "@shared/index";
 
 interface AnswerScreenProps {
   /** La question en cours (sans correctIndex) */
-  question: Omit<QuizQuestion, 'correctIndex'>
+  question: Omit<QuizQuestion, "correctIndex">;
   /** Temps restant en secondes */
-  remaining: number
+  remaining: number;
   /** Callback quand le joueur clique sur un choix */
-  onAnswer: (choiceIndex: number) => void
-  /** Si true, le joueur a deja repondu */
-  hasAnswered: boolean
+  onAnswer: (choiceIndex: number) => void;
+  /** Si true, le joueur a déjà répondu */
+  hasAnswered: boolean;
 }
 
-/**
- * Composant affichant la question et les boutons de reponse colores.
- *
- * Ce qu'il faut implementer :
- * - Le temps restant (classe .answer-timer)
- *   Ajouter la classe .warning si remaining <= 10, .danger si remaining <= 3
- * - Le texte de la question (classe .answer-question)
- * - 4 boutons colores dans une grille (classes .answer-grid, .answer-btn)
- *   Les couleurs sont gerees automatiquement par :nth-child dans le CSS
- * - Tous les boutons sont desactives (disabled) si hasAnswered est true
- * - Optionnel : ajouter la classe .selected au bouton choisi
- * - Si le joueur a repondu, afficher "Reponse envoyee !" (classe .answered-message)
- *
- * Classes CSS disponibles : .answer-screen, .answer-timer, .warning, .danger,
- * .answer-question, .answer-grid, .answer-btn, .selected, .answered-message
- */
-function AnswerScreen({ question, remaining, onAnswer, hasAnswered }: AnswerScreenProps) {
-  // TODO: State optionnel pour stocker l'index du choix selectionne
+export default function AnswerScreen({
+  question,
+  remaining,
+  onAnswer,
+  hasAnswered,
+}: AnswerScreenProps) {
+  // On stocke l'index du choix cliqué pour le mettre en surbrillance
+  const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
 
   const handleClick = (index: number) => {
-    // TODO: Appeler onAnswer(index)
-    // TODO: Optionnel : sauvegarder l'index selectionne pour le style .selected
+    // Sécurité supplémentaire : on ne fait rien si le joueur a déjà répondu
+    if (hasAnswered) return;
+
+    setSelectedIndex(index);
+    onAnswer(index);
+  };
+
+  // Calcul dynamique de la couleur du chronomètre
+  let timerClass = "answer-timer";
+  if (remaining <= 3) {
+    timerClass += " danger";
+  } else if (remaining <= 10) {
+    timerClass += " warning";
   }
 
   return (
-    <div className="answer-screen">
-      {/* TODO: Timer avec .answer-timer (+ .warning / .danger selon remaining) */}
-      {/* TODO: Texte de la question avec .answer-question */}
-      {/* TODO: Grille de 4 boutons avec .answer-grid et .answer-btn */}
-      {/* TODO: Message "Reponse envoyee !" si hasAnswered */}
-    </div>
-  )
-}
+    <div className="answer-screen phase-container">
+      {/* Chronomètre */}
+      <div className={timerClass}>{remaining}</div>
 
-export default AnswerScreen
+      {/* Texte de la question */}
+      <h2 className="answer-question">{question.text}</h2>
+
+      {/* Grille des boutons de réponse */}
+      <div className="answer-grid">
+        {question.choices.map((choice, index) => {
+          const isSelected = selectedIndex === index;
+
+          return (
+            <button
+              key={index}
+              className={`answer-btn ${isSelected ? "selected" : ""}`}
+              onClick={() => handleClick(index)}
+              disabled={hasAnswered} // Désactive tous les boutons dès qu'une réponse est envoyée
+            >
+              <span className="choice-text">{choice}</span>
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Message de confirmation */}
+      {hasAnswered && (
+        <div className="answered-message">
+          Réponse envoyée ! En attente des autres joueurs... ⏳
+        </div>
+      )}
+    </div>
+  );
+}

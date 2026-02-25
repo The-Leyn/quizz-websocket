@@ -1,49 +1,69 @@
 // ============================================================
 // QuestionView - Affichage de la question en cours (cote host)
-// A IMPLEMENTER : question, choix, timer, compteur de reponses
 // ============================================================
 
-import type { QuizQuestion } from '@shared/index'
+import type { QuizQuestion } from "@shared/index";
 
 interface QuestionViewProps {
   /** La question en cours (sans correctIndex) */
-  question: Omit<QuizQuestion, 'correctIndex'>
+  question: Omit<QuizQuestion, "correctIndex">;
   /** Index de la question (0-based) */
-  index: number
+  index: number;
   /** Nombre total de questions */
-  total: number
+  total: number;
   /** Temps restant en secondes */
-  remaining: number
+  remaining: number;
   /** Nombre de joueurs ayant repondu */
-  answerCount: number
+  answerCount: number;
   /** Nombre total de joueurs */
-  totalPlayers: number
+  totalPlayers: number;
 }
 
-/**
- * Composant affichant la question en cours sur l'ecran du host.
- *
- * Ce qu'il faut implementer :
- * - En-tete avec "Question X / Y" (classe .question-header)
- * - Le timer en cercle (classes .countdown, .countdown-circle)
- *   Ajouter la classe .warning si remaining <= 10, .danger si remaining <= 3
- * - Le texte de la question (classe .question-text)
- * - Les 4 choix dans une grille (classes .choices-grid, .choice-card)
- * - Le compteur de reponses "X / Y reponses" (classe .answer-counter)
- *
- * Note : cote host on affiche les choix mais sans interaction
- * (c'est purement visuel pour projeter au mur)
- */
-function QuestionView({ question, index, total, remaining, answerCount, totalPlayers }: QuestionViewProps) {
+export default function QuestionView({
+  question,
+  index,
+  total,
+  remaining,
+  answerCount,
+  totalPlayers,
+}: QuestionViewProps) {
+  // Logique pour calculer la couleur du timer en fonction du temps restant
+  let timerClass = "countdown-circle";
+  if (remaining <= 3) {
+    timerClass += " danger"; // Rouge clignotant (selon ton CSS)
+  } else if (remaining <= 10) {
+    timerClass += " warning"; // Orange
+  }
+
   return (
     <div className="phase-container">
-      {/* TODO: En-tete "Question {index + 1} / {total}" */}
-      {/* TODO: Timer avec .countdown-circle (+ .warning / .danger selon remaining) */}
-      {/* TODO: Texte de la question avec .question-text */}
-      {/* TODO: Grille des 4 choix avec .choices-grid et .choice-card */}
-      {/* TODO: Compteur "{answerCount} / {totalPlayers} reponses" */}
-    </div>
-  )
-}
+      {/* En-tête : Progression dans le quiz */}
+      <div className="question-header">
+        Question {index + 1} / {total}
+      </div>
 
-export default QuestionView
+      {/* Affichage du compte à rebours */}
+      <div className="countdown">
+        <div className={timerClass}>{remaining}</div>
+      </div>
+
+      {/* Texte de la question écrit en grand */}
+      <h2 className="question-text">{question.text}</h2>
+
+      {/* Grille des 4 choix de réponses (purement visuel pour le Host) */}
+      <div className="choices-grid">
+        {question.choices.map((choice, i) => (
+          // On peut supposer que ton CSS contient des couleurs Kahoot-like (ex: .choice-color-1)
+          <div key={i} className={`choice-card choice-color-${i + 1}`}>
+            {choice}
+          </div>
+        ))}
+      </div>
+
+      {/* Compteur en temps réel des joueurs qui ont "lock" leur réponse */}
+      <div className="answer-counter">
+        {answerCount} / {totalPlayers} réponses reçues
+      </div>
+    </div>
+  );
+}
