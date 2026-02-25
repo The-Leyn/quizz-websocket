@@ -185,7 +185,7 @@ wss.on("connection", (ws: WebSocket) => {
       // ============================================================
       case "reconnect": {
         try {
-          // Décodage du token pour récupérer le playerId et le quizCode
+          // 1. Vérifier et décoder le token cryptographique
           const decoded = jwt.verify(message.token, JWT_SECRET) as {
             playerId: string;
             quizCode: string;
@@ -197,14 +197,23 @@ wss.on("connection", (ws: WebSocket) => {
             break;
           }
 
-          // Tenter la reconnexion dans la room
-          const success = room.reconnectPlayer(decoded.playerId, ws);
+          // 2. Tenter la reconnexion dans la room
+          const oldWs = room.reconnectPlayer(decoded.playerId, ws);
 
-          if (success) {
-            // Mise à jour de la map pour ce joueur
+          if (oldWs !== null) {
+            // --- CORRECTION DE LA FUITE DE MÉMOIRE ---
+            // On supprime l'ancienne connexion de la map globale
+            clientRoomMap.delete(oldWs);
+
+            // On ferme l'ancienne connexion si elle est toujours accrochée (zombie)
+            if (oldWs.readyState === WebSocket.OPEN) {
+              oldWs.close(1000, "Reconnexion depuis un autre onglet/appareil");
+            }
+
+            // 3. Mettre à jour la map globale avec le NOUVEAU WebSocket
             clientRoomMap.set(ws, { room, playerId: decoded.playerId });
 
-            // Renvoyer l'état actuel pour que l'écran du joueur se mette à jour
+            // 4. Renvoyer l'état actuel pour que l'écran du joueur se mette à jour
             const currentScore = room.scores.get(decoded.playerId) || 0;
             send(ws, {
               type: "sync",
@@ -213,7 +222,7 @@ wss.on("connection", (ws: WebSocket) => {
             });
 
             console.log(
-              `[Server] Joueur ${decoded.playerId} reconnecté avec succès !`,
+              `[Server] Joueur ${decoded.playerId} reconnecté avec succès ! Ancienne session nettoyée.`,
             );
           } else {
             send(ws, {
@@ -222,7 +231,6 @@ wss.on("connection", (ws: WebSocket) => {
             });
           }
         } catch (err) {
-          // Sécurité si le token est invalide ou corrompu
           send(ws, {
             type: "error",
             message: "Token invalide ou corrompu. Reconnexion refusée.",

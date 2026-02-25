@@ -194,13 +194,15 @@ export class QuizRoom {
   // Bonus
 
   // Pour reconnecter un joueur qui a perdu sa connexion
-  reconnectPlayer(playerId: string, newWs: WebSocket): boolean {
+  reconnectPlayer(playerId: string, newWs: WebSocket): WebSocket | null {
     const player = this.players.get(playerId);
+    if (!player) {
+      return null;
+    }
 
-    if (!player) return false;
-
+    const oldWs = player.ws;
     player.ws = newWs;
 
-    return true;
+    return oldWs;
   }
 }
