@@ -1,0 +1,6 @@
+﻿export { default as JoinPage } from './join-page'
+export { default as LobbyPage } from './lobby-page'
+export { default as QuestionPage } from './question-page'
+export { default as FeedbackPage } from './feedback-page'
+export { default as LeaderboardPage } from './leaderboard-page'
+export { default as EndedPage } from './ended-page'
