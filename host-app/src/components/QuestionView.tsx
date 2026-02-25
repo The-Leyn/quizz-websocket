@@ -38,10 +38,29 @@ function QuestionView({ question, index, total, remaining, answerCount, totalPla
   return (
     <div className="phase-container">
       {/* TODO: En-tete "Question {index + 1} / {total}" */}
+      <div className="question-header">
+        <h2>Question {index + 1} / {total}</h2>
+      </div>
       {/* TODO: Timer avec .countdown-circle (+ .warning / .danger selon remaining) */}
+      <div className={`countdown-circle ${remaining <= 10 ? 'warning' : remaining <= 3 ? 'danger' : ''}`}>
+        <div className="countdown">{remaining}</div>
+      </div>
       {/* TODO: Texte de la question avec .question-text */}
+      <div className="question-text">
+        {question.text}
+      </div>
       {/* TODO: Grille des 4 choix avec .choices-grid et .choice-card */}
+      <div className="choices-grid">
+        {question.choices.map((choice, choiceIndex) => (
+          <div key={choiceIndex} className="choice-card">
+            {choice}
+          </div>
+        ))}
+      </div>
       {/* TODO: Compteur "{answerCount} / {totalPlayers} reponses" */}
+      <div className="answer-counter">
+        {answerCount} / {totalPlayers} reponses
+      </div>
     </div>
   )
 }

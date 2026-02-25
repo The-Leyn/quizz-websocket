@@ -35,10 +35,25 @@ function Results({ correctIndex, distribution, choices, onNext }: ResultsProps) 
       <div className="results-container">
         <h1>Resultats</h1>
         {/* TODO: Pour chaque choix, afficher une barre de resultat */}
+        {choices.map((choice, index) => (
+          <div key={index} className="result-bar-container">
+            <div className="result-bar-label">{choice}</div>
+            <div className="result-bar-wrapper">
+              <div
+                className={`result-bar ${index === correctIndex ? 'correct' : 'incorrect'}`}
+                style={{ width: `${distribution[index]}%` }}
+              ></div>
+            </div>
+            <div className="result-bar-count">{distribution[index]}</div>
+          </div>
+        ))}
         {/* TODO: Utiliser .result-bar.correct pour la bonne reponse */}
         {/* TODO: Calculer la largeur proportionnelle de chaque barre */}
         {/* TODO: Afficher le nombre de reponses dans chaque barre */}
         {/* TODO: Bouton "Question suivante" */}
+        <button className="btn-primary" onClick={onNext}>
+          Question suivante
+        </button>
       </div>
     </div>
   )
