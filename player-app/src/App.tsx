@@ -1,7 +1,7 @@
-﻿import { useEffect, useState } from 'react'
+﻿import { useEffect, useRef, useState } from 'react'
 import type { QuizPhase, QuizQuestion } from '@shared/index'
 import { useWebSocket } from './shared/hooks/useWebSocket'
-import { Button, ConnectionBadge } from './shared/ui'
+import { Button, Card, ConnectionBadge, ScreenContainer, Title } from './shared/ui'
 import {
   EndedPage,
   FeedbackPage,
@@ -13,8 +13,16 @@ import {
 
 const WS_URL = 'ws://localhost:3001'
 const IS_DEV = import.meta.env.DEV
+const SESSION_STORAGE_KEY = 'quiz-player-session-v1'
 
 type AppPhase = QuizPhase | 'join' | 'feedback'
+
+interface PlayerSession {
+  token: string
+  playerId: string
+  quizCode: string
+  playerName: string
+}
 
 const PREVIEW_PHASES: Array<{ value: AppPhase; label: string }> = [
   { value: 'join', label: 'Join' },
@@ -40,12 +48,59 @@ const PREVIEW_RANKINGS = [
   { name: 'Manon', score: 2200 },
 ]
 
+function getInitialPreviewMode(): boolean {
+  if (!IS_DEV || typeof window === 'undefined') return false
+  return new URLSearchParams(window.location.search).get('preview') === '1'
+}
+
+function loadStoredSession(): PlayerSession | null {
+  if (typeof window === 'undefined') return null
+
+  try {
+    const raw = window.localStorage.getItem(SESSION_STORAGE_KEY)
+    if (!raw) return null
+
+    const parsed = JSON.parse(raw) as Partial<PlayerSession>
+
+    if (
+      typeof parsed.token !== 'string' ||
+      typeof parsed.playerId !== 'string' ||
+      typeof parsed.quizCode !== 'string' ||
+      typeof parsed.playerName !== 'string'
+    ) {
+      return null
+    }
+
+    return {
+      token: parsed.token,
+      playerId: parsed.playerId,
+      quizCode: parsed.quizCode,
+      playerName: parsed.playerName,
+    }
+  } catch {
+    return null
+  }
+}
+
+function persistSession(session: PlayerSession | null): void {
+  if (typeof window === 'undefined') return
+
+  if (!session) {
+    window.localStorage.removeItem(SESSION_STORAGE_KEY)
+    return
+  }
+
+  window.localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(session))
+}
+
+const initialSession = loadStoredSession()
+
 function App() {
   const { status, sendMessage, lastMessage } = useWebSocket(WS_URL)
 
   const [phase, setPhase] = useState<AppPhase>('join')
-  const [playerName, setPlayerName] = useState('')
-  const [currentQuizCode, setCurrentQuizCode] = useState('')
+  const [playerName, setPlayerName] = useState(initialSession?.playerName ?? '')
+  const [currentQuizCode, setCurrentQuizCode] = useState(initialSession?.quizCode ?? '')
   const [players, setPlayers] = useState<string[]>([])
   const [currentQuestion, setCurrentQuestion] = useState<Omit<QuizQuestion, 'correctIndex'> | null>(null)
   const [remaining, setRemaining] = useState(0)
@@ -55,17 +110,86 @@ function App() {
   const [score, setScore] = useState(0)
   const [rankings, setRankings] = useState<{ name: string; score: number }[]>([])
   const [error, setError] = useState<string | undefined>(undefined)
+  const [session, setSession] = useState<PlayerSession | null>(initialSession)
 
-  const [previewMode, setPreviewMode] = useState<boolean>(IS_DEV)
+  const [previewMode, setPreviewMode] = useState<boolean>(getInitialPreviewMode())
   const [previewPhase, setPreviewPhase] = useState<AppPhase>('join')
   const [previewCorrect, setPreviewCorrect] = useState<boolean>(true)
+
+  const lastStatusRef = useRef(status)
+  const hasRequestedReconnectRef = useRef(false)
+
+  useEffect(() => {
+    persistSession(session)
+  }, [session])
+
+  useEffect(() => {
+    const previousStatus = lastStatusRef.current
+    lastStatusRef.current = status
+
+    if (status === 'disconnected') {
+      hasRequestedReconnectRef.current = false
+      return
+    }
+
+    if (previewMode || status !== 'connected' || !session) return
+
+    if (hasRequestedReconnectRef.current) return
+
+    const isFirstConnection = previousStatus === 'connecting'
+    const isReconnection = previousStatus === 'disconnected'
+
+    if (!isFirstConnection && !isReconnection) return
+
+    hasRequestedReconnectRef.current = true
+    sendMessage({
+      type: 'reconnect',
+      quizCode: session.quizCode,
+      token: session.token,
+    })
+  }, [previewMode, sendMessage, session, status])
 
   useEffect(() => {
     if (!lastMessage) return
 
     switch (lastMessage.type) {
+      case 'session': {
+        const nextSession: PlayerSession = {
+          token: lastMessage.token,
+          playerId: lastMessage.playerId,
+          quizCode: currentQuizCode,
+          playerName,
+        }
+        setSession(nextSession)
+        break
+      }
+
       case 'sync': {
         setPhase(lastMessage.phase)
+
+        const syncData =
+          lastMessage.data && typeof lastMessage.data === 'object'
+            ? (lastMessage.data as Record<string, unknown>)
+            : null
+
+        if (syncData) {
+          if (typeof syncData.score === 'number') {
+            setScore(syncData.score)
+          }
+
+          if (typeof syncData.quizCode === 'string') {
+            setCurrentQuizCode(syncData.quizCode)
+          }
+
+          if (Array.isArray(syncData.players)) {
+            const safePlayers = syncData.players.filter(
+              (value): value is string => typeof value === 'string'
+            )
+            setPlayers(safePlayers)
+          }
+        }
+
+        setError(undefined)
         break
       }
 
@@ -108,15 +232,28 @@ function App() {
 
       case 'ended': {
         setPhase('ended')
+        setSession(null)
         break
       }
 
       case 'error': {
+        const normalizedMessage = lastMessage.message.toLowerCase()
+        const isReconnectError =
+          normalizedMessage.includes('token') ||
+          normalizedMessage.includes('reconnexion') ||
+          normalizedMessage.includes('salle n')
+
+        if (isReconnectError) {
+          setSession(null)
+          hasRequestedReconnectRef.current = false
+          setPhase('join')
+        }
+
         setError(lastMessage.message)
         break
       }
     }
-  }, [lastMessage, lastSelectedChoice, playerName])
+  }, [currentQuizCode, lastMessage, lastSelectedChoice, playerName])
 
   const handleJoin = (code: string, name: string) => {
     const safeCode = code.trim().toUpperCase()
@@ -168,6 +305,9 @@ function App() {
     setRankings([])
     setError(undefined)
     setCurrentQuizCode('')
+    setSession(null)
+
+    hasRequestedReconnectRef.current = false
 
     if (previewMode) {
       setPreviewPhase('join')
@@ -199,7 +339,14 @@ function App() {
             onAnswer={handleAnswer}
             hasAnswered={hasAnswered}
           />
-        ) : null
+        ) : (
+          <ScreenContainer size="md">
+            <Card className="space-y-3 text-center">
+              <Title size="md">Reconnexion effectuee</Title>
+              <p className="text-text-muted">En attente de la prochaine question...</p>
+            </Card>
+          </ScreenContainer>
+        )
 
       case 'feedback':
       case 'results':

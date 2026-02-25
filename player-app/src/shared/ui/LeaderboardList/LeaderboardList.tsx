@@ -1,7 +1,6 @@
 ﻿import { cn } from '../../lib'
 import Title from '../Title'
 import LeaderboardRow from '../LeaderboardRow'
-import { Crown } from 'lucide-react';
 
 interface RankingItem {
   name: string
