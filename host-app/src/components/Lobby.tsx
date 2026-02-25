@@ -29,10 +29,23 @@ function Lobby({ quizCode, players, onStart }: LobbyProps) {
   return (
     <div className="phase-container">
       {/* TODO: Label "Code du quiz" avec classe .quiz-code-label */}
+      <label className="quiz-code-label">Code du quiz</label>
       {/* TODO: Afficher quizCode avec classe .quiz-code */}
+      <div className="quiz-code">{quizCode}</div>
       {/* TODO: Afficher le nombre de joueurs */}
+      <div className="player-count">{players.length} joueurs</div>
       {/* TODO: Liste des joueurs avec .player-list et .player-chip */}
+      <div className="player-list">
+        {players.map((players, index) => (
+          <div key={index} className="player-chip">
+            {players}
+          </div>
+        ))}
+      </div>
       {/* TODO: Bouton Demarrer avec classe .btn-start, desactive si 0 joueurs */}
+      <button className="btn-start" onClick={onStart} disabled={players.length === 0}>
+        Demarrer le quiz
+      </button>
     </div>
   )
 }
